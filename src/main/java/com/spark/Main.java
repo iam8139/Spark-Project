@@ -6,13 +6,17 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.Optional;
+import org.checkerframework.checker.nullness.Opt;
 import org.codehaus.janino.Java;
 import org.sparkproject.guava.collect.Iterables;
+import scala.Int;
 import scala.Tuple2;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.OptionalInt;
 
 public class Main {
     public static void main(String[] args) throws InterruptedException {
@@ -79,6 +83,9 @@ public class Main {
 
             // Reading from Disk
             readFromDisk(sc);
+
+            // JavaPairRDD Joins
+            performJoins(sc);
         }
 
     }
@@ -97,5 +104,47 @@ public class Main {
         List<Tuple2<Long, String>> result = switchedPairRdd.take(50);
 
         result.forEach(System.out::println);
+    }
+
+    private static void performJoins(JavaSparkContext sc) {
+        System.out.println("Performing Inner Joins");
+
+        List<Tuple2<Integer, Integer>> visitors = new ArrayList<>();
+        visitors.add(new Tuple2<>(1, 10));
+        visitors.add(new Tuple2<>(2, 15));
+        visitors.add(new Tuple2<>(3, 8));
+        visitors.add(new Tuple2<>(4, 5));
+
+        List<Tuple2<Integer, String>> users = new ArrayList<>();
+        users.add(new Tuple2<>(1, "Kargil"));
+        users.add(new Tuple2<>(2, "Anurag"));
+        users.add(new Tuple2<>(4, "Anand"));
+        users.add(new Tuple2<>(5, "Rohit"));
+        users.add(new Tuple2<>(6, "Mohit"));
+
+        JavaPairRDD<Integer, Integer> visitorsRdd = sc.parallelizePairs(visitors);
+        JavaPairRDD<Integer, String> usersRdd = sc.parallelizePairs(users);
+
+        JavaPairRDD<Integer, Tuple2<Integer, String>> joinedResult = visitorsRdd.join(usersRdd);
+
+        joinedResult.collect().forEach(System.out::println);
+
+        System.out.println("Performing (Left) Inner Join");
+
+        JavaPairRDD<Integer, Tuple2<Integer, Optional<String>>> leftJoinResult = visitorsRdd.leftOuterJoin(usersRdd);
+        leftJoinResult.collect().forEach(result -> System.out.println(result._2._2.orElse("blank").toUpperCase()));
+
+        System.out.println("Performing (Right) Outer Join");
+
+        JavaPairRDD<Integer, Tuple2<Optional<Integer>, String>> outerJoinResult = visitorsRdd.rightOuterJoin(usersRdd);
+        outerJoinResult.collect().forEach(result -> System.out.println(result._2._2 + "\t" + result._2._1.orElse(0)));
+
+        System.out.println("Performing Full Outer Join");
+        JavaPairRDD<Integer, Tuple2<Optional<Integer>, Optional<String>>> fullJoin = visitorsRdd.fullOuterJoin(usersRdd);
+        fullJoin.collect().forEach(result -> System.out.println(result._2._2.orElse("blank").toUpperCase() + "\t" + result._2._1.orElse(0)));
+
+        System.out.println("Cartesian Join");
+        JavaPairRDD<Tuple2<Integer, Integer>, Tuple2<Integer, String>> cartesianJoin = visitorsRdd.cartesian(usersRdd);
+        cartesianJoin.collect().forEach(result -> System.out.println(result._1 + "\t" + result._2));
     }
 }
