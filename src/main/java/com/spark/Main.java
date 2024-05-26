@@ -7,6 +7,9 @@ import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.Optional;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
 import org.checkerframework.checker.nullness.Opt;
 import org.codehaus.janino.Java;
 import org.sparkproject.guava.collect.Iterables;
@@ -20,6 +23,7 @@ import java.util.OptionalInt;
 
 public class Main {
     public static void main(String[] args) throws InterruptedException {
+        main(new int[]{1});
         List<Double> inputData = new ArrayList<>();
         inputData.add(12.0);
         inputData.add(35.0);
@@ -86,6 +90,8 @@ public class Main {
 
             // JavaPairRDD Joins
             performJoins(sc);
+
+            Thread.sleep(120 * 1000);
         }
 
     }
@@ -146,5 +152,17 @@ public class Main {
         System.out.println("Cartesian Join");
         JavaPairRDD<Tuple2<Integer, Integer>, Tuple2<Integer, String>> cartesianJoin = visitorsRdd.cartesian(usersRdd);
         cartesianJoin.collect().forEach(result -> System.out.println(result._1 + "\t" + result._2));
+    }
+
+    public static void main(int[] args) {
+        SparkSession sparkSession = SparkSession.builder().appName("Spark SQL Application").master("local[*]").getOrCreate();
+
+        Dataset<Row> dataset = sparkSession.read().option("header", true).csv("/Users/kargil/Desktop/Spring/Delivered Folder/Starting Workspace/Project/src/main/resources/exams/students.csv");
+        dataset.printSchema();
+        dataset.show();
+
+        System.out.println("There are " + dataset.count() + " records");
+
+        sparkSession.close();
     }
 }
