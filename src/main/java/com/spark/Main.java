@@ -6,6 +6,7 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.codehaus.janino.Java;
 import org.sparkproject.guava.collect.Iterables;
 import scala.Tuple2;
 
@@ -75,6 +76,26 @@ public class Main {
             JavaRDD<String> words = originalLogMessages.flatMap(msg -> Arrays.asList(msg.split(" ")).iterator());
             JavaRDD<String> filteredWords = words.filter(word -> word.length() > 1);
             filteredWords.collect().forEach(System.out::println);
+
+            // Reading from Disk
+            readFromDisk(sc);
         }
+
+    }
+
+    private static void readFromDisk(JavaSparkContext sc) {
+        System.out.println("Reading from Disk");
+        JavaRDD<String> initialRdd = sc.textFile("/Users/kargil/Desktop/Spring/Spark-Project/src/main/resources/subtitles/input.txt");
+        JavaRDD<String> lettersRdd = initialRdd.map(sentence  -> sentence.replaceAll("[^a-zA-Z\\s]", "").toLowerCase());
+        JavaRDD<String> removedBlankLines = lettersRdd.filter(sentence -> !sentence.isBlank());
+        JavaRDD<String> words = removedBlankLines.flatMap(sentence -> Arrays.asList(sentence.split(" ")).iterator());
+        JavaRDD<String> interestingWords = words.filter(word -> word.length() > 3);
+        JavaPairRDD<String, Long> pairRdd = interestingWords.mapToPair(word -> new Tuple2<String, Long>(word, 1L));
+        JavaPairRDD<String, Long> reducedPairRdd = pairRdd.reduceByKey(Long::sum);
+        JavaPairRDD<String, Long> sortedPairRdd = reducedPairRdd.sortByKey();
+        JavaPairRDD<Long, String> switchedPairRdd = sortedPairRdd.mapToPair(pair -> new Tuple2<>(pair._2, pair._1)).sortByKey(false);
+        List<Tuple2<Long, String>> result = switchedPairRdd.take(50);
+
+        result.forEach(System.out::println);
     }
 }
