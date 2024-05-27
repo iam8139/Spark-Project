@@ -7,19 +7,22 @@ import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.Optional;
-import org.apache.spark.sql.Dataset;
-import org.apache.spark.sql.Row;
-import org.apache.spark.sql.SparkSession;
+import org.apache.spark.api.java.function.FilterFunction;
+import org.apache.spark.sql.*;
+import org.apache.spark.sql.types.*;
 import org.checkerframework.checker.nullness.Opt;
 import org.codehaus.janino.Java;
 import org.sparkproject.guava.collect.Iterables;
 import scala.Int;
 import scala.Tuple2;
 
+import javax.xml.crypto.Data;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.OptionalInt;
+
+import static org.apache.spark.sql.functions.col;
 
 public class Main {
     public static void main(String[] args) throws InterruptedException {
@@ -86,12 +89,12 @@ public class Main {
             filteredWords.collect().forEach(System.out::println);
 
             // Reading from Disk
-            readFromDisk(sc);
+//            readFromDisk(sc);
 
             // JavaPairRDD Joins
-            performJoins(sc);
+//            performJoins(sc);
 
-            Thread.sleep(120 * 1000);
+//            Thread.sleep(120 * 1000);
         }
 
     }
@@ -155,14 +158,76 @@ public class Main {
     }
 
     public static void main(int[] args) {
+        Logger.getLogger("org.apache").setLevel(Level.WARN);
         SparkSession sparkSession = SparkSession.builder().appName("Spark SQL Application").master("local[*]").getOrCreate();
 
         Dataset<Row> dataset = sparkSession.read().option("header", true).csv("/Users/kargil/Desktop/Spring/Delivered Folder/Starting Workspace/Project/src/main/resources/exams/students.csv");
-        dataset.printSchema();
-        dataset.show();
+//        dataset.printSchema();
+//        dataset.show();
 
-        System.out.println("There are " + dataset.count() + " records");
+//        System.out.println("There are " + dataset.count() + " records");
+
+        // String Expression filter
+        System.out.println("Filter using regular expressions");
+        Dataset<Row> filteredResponse = dataset.filter("subject = 'Modern Art' AND year >= '2007' ");
+        filteredResponse.show(10);
+
+        // Regular lambda expression filter
+        System.out.println("Filter using lambda expressions");
+        FilterFunction<Row> fun = row -> row.getAs("subject").equals("Modern Art") && Integer.parseInt(row.getAs("year")) >= 2007;
+        Dataset<Row> filteredResponse2 = dataset.filter(fun);
+        filteredResponse2.show(10);
+
+        // Filter using Spark Columns
+        System.out.println("Filter using Spark Columns");
+        Column subjects = dataset.col("subject");
+        Column years = dataset.col("year");
+        Dataset<Row> modernArtDataset = dataset.filter(subjects.equalTo("Modern Art").and(years.geq(2007)));
+        modernArtDataset.show(10);
+
+        // Filter using functions
+        System.out.println("Filter using functions");
+        Dataset<Row> colFilter =  dataset.filter(col("subject").equalTo("Modern Art").and(col("year").geq(2007)));
+        colFilter.show(5);
+
+        // Spark SQL - views
+        dataset.createOrReplaceTempView("students");
+//        Dataset<Row> sqlResult = sparkSession.sql("select distinct(score) from students where subject='French'");
+//        sqlResult.show(10);
+
+        //Spark - In Memory datasets
+        System.out.println("In Memory Data - Aggregation and Grouping");
+
+        List<Row> inMemory = new ArrayList<Row>();
+        inMemory.add(RowFactory.create("WARN", "2016-12-31 04:19:32"));
+        inMemory.add(RowFactory.create("FATAL", "2016-12-31 03:22:34"));
+        inMemory.add(RowFactory.create("WARN", "2016-12-31 03:21:21"));
+        inMemory.add(RowFactory.create("INFO", "2015-4-21 14:32:21"));
+        inMemory.add(RowFactory.create("FATAL","2015-4-21 19:23:20"));
+
+        StructField[] structField = new StructField[] {
+                new StructField("level", DataTypes.StringType, false, Metadata.empty()),
+                new StructField("datetime", DataTypes.StringType, false, Metadata.empty())
+        };
+
+        StructType structType = new StructType(structField);
+        Dataset<Row> dummyDataset = sparkSession.createDataFrame(inMemory, structType);
+        dummyDataset.createOrReplaceTempView("log_data");
+
+        Dataset<Row> groupedResult = sparkSession.sql("select level, count(datetime) from log_data group by level order by level");
+
+        groupedResult = sparkSession.sql("select level, date_format(datetime, 'MMMM') as month, count(1) as total from log_data group by level, month");
+        groupedResult.show();
+
+        readCsv(sparkSession, dataset);
 
         sparkSession.close();
+    }
+
+    private static void readCsv(SparkSession session, Dataset<Row> dataset) {
+        System.out.println("CSV operations using Spark SQL");
+        dataset.createOrReplaceTempView("students");
+        Dataset<Row> result = session.sql("select count(1) as total, subject, first(year) as year from students group by subject, grade order by subject asc, total");
+        result.show();
     }
 }
