@@ -22,7 +22,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.OptionalInt;
 
-import static org.apache.spark.sql.functions.col;
+import static org.apache.spark.sql.functions.*;
 
 public class Main {
     public static void main(String[] args) throws InterruptedException {
@@ -221,13 +221,59 @@ public class Main {
 
         readCsv(sparkSession, dataset);
 
+//        readTxt(sparkSession);
+
+//        pivotTable(sparkSession);
+
         sparkSession.close();
     }
 
     private static void readCsv(SparkSession session, Dataset<Row> dataset) {
         System.out.println("CSV operations using Spark SQL");
         dataset.createOrReplaceTempView("students");
-        Dataset<Row> result = session.sql("select count(1) as total, subject, first(year) as year from students group by subject, grade order by subject asc, total");
+
+        session.udf().register("passed", score -> score.equals("A+"), DataTypes.BooleanType);
+        Dataset<Row> result = dataset.withColumn("pass", callUDF("passed", col("score")));
+
+//        Dataset<Row> result = dataset.groupBy("subject")
+//                .pivot("year")
+//                .agg(round(avg(col("score")), 2).alias("average"),
+//                        round(stddev(col("score")), 2).alias("std"));
+//
+//        result = dataset.groupBy(col("subject"))
+//                .agg(max(col("score")
+//                        .cast(DataTypes.IntegerType))
+//                        .alias("max score"),
+//                        min(col("score")
+//                                .cast(DataTypes.IntegerType))
+//                                .alias("min score"));
+//        result = session.sql("select count(1) as total, subject, first(year) as year from students group by subject, grade order by subject asc, total");
         result.show();
+    }
+
+    private static void readTxt(SparkSession session) {
+        Dataset<Row> logDataset = session.read().option("header", true).csv("/Users/kargil/Desktop/Spring/Delivered Folder/extras/biglog.txt");
+//        Dataset<Row> logData = logDataset.selectExpr("level", "date_format(datetime, 'MMMM') as Month");
+
+        Dataset<Row> logData = logDataset.select(col("level"),
+                date_format(col("datetime"), "MMMM").alias("month"),
+                date_format(col("datetime"), "M").alias("monthnum").cast(DataTypes.IntegerType));
+        logData = logData.groupBy(col("level"), col("month"), col("monthnum"))
+                .count()
+                .orderBy(first(col("monthnum")), col("level"))
+                .drop(col("monthnum"));
+
+        logData.show();
+    }
+
+    private static void pivotTable(SparkSession session) {
+        Dataset<Row> logDataset = session.read().option("header", true).csv("/Users/kargil/Desktop/Spring/Delivered Folder/extras/biglog.txt");
+
+        Dataset<Row> logData = logDataset.select(col("level"),
+                date_format(col("datetime"), "MMMM").alias("month"),
+                date_format(col("datetime"), "M").alias("monthnum").cast(DataTypes.IntegerType));
+
+        logData = logData.groupBy("level").pivot("month").count();
+        logData.show();
     }
 }
